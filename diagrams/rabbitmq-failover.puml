@@ -1,0 +1,23 @@
+@startuml
+title RabbitMQ - таймаут push и резерв SMS
+participant "Планировщик" as Timer
+database PostgreSQL as DB
+queue RabbitMQ as Q
+participant Worker
+participant "SMS-провайдер" as SMS
+participant API
+Timer -> DB: push без ACK, истёк next_attempt_at
+Timer -> DB: CAS: выбрать SMS + outbox
+Timer -> Q: relay публикует шаг SMS
+Q -> Worker: доставить SMS
+Worker -> DB: проверить отсутствие DELIVERED
+Worker -> DB: сохранить SMS attempt_id
+Worker -> SMS: send(attempt_id)
+SMS --> Worker: принято
+Worker -> DB: сохранить ответ
+Worker -> Q: ACK
+SMS -> API: подписанный delivered callback
+API -> DB: dedup receipt, DELIVERED
+... поздний push ACK ...
+API -> DB: сохранить evidence, новые шаги запрещены
+@enduml

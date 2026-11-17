@@ -1,0 +1,38 @@
+@startuml
+!include <C4/C4_Container>
+title Вариант 2 - C4 Container
+Person(client, "Клиент", "Получение и настройки")
+System_Ext(bank, "Сервисы банка", "Операции и transactional outbox")
+System_Ext(provider, "Push / SMS / email", "Внешние провайдеры")
+System_Ext(bulk, "Сервисный и маркетинговый контур", "Отдельные Go workers, RabbitMQ и PostgreSQL")
+System_Ext(obs, "Наблюдаемость", "OpenTelemetry / Prometheus / Grafana")
+System_Boundary(platform, "Notification Platform: критичная доставка") {
+  Container(api, "Приём и callback", "Go", "Валидация входа и receipts")
+  ContainerDb(db, "Реестр и проекция", "PostgreSQL", "Ключи, outbox, inbox, аудит")
+  Container(relay, "Starter и signal relay", "Go", "Устойчивый запуск и передача receipts")
+  Container(temporal, "Workflow service", "Temporal", "История, task queues, таймеры")
+  ContainerDb(history, "Workflow persistence", "PostgreSQL", "Отдельный HA-кластер")
+  Container(worker, "Workflow и activity workers", "Go / Temporal SDK", "Маршрут, failover, адаптеры")
+  Container(policy, "Настройки", "Go", "Контакты, согласия, политики")
+  ContainerDb(policydb, "Хранилище настроек", "PostgreSQL", "Контакты, согласия и версии")
+}
+Rel(policy, policydb, "Читает / сохраняет", "SQL")
+Rel(bank, api, "Передаёт уведомление", "HTTPS")
+Rel(client, policy, "Меняет настройки", "HTTPS")
+Rel(client, api, "Подтверждает push", "HTTPS")
+Rel(api, db, "Сохраняет вход и receipt", "SQL")
+Rel(api, bulk, "Направляет некритичный поток", "HTTPS")
+Rel(relay, db, "Читает outbox и inbox", "SQL")
+Rel(relay, temporal, "Start / Signal", "gRPC")
+Rel(temporal, history, "Хранит историю", "SQL")
+Rel(worker, temporal, "Poll / complete tasks", "gRPC")
+Rel(worker, policy, "Проверяет настройки", "HTTPS")
+Rel(worker, provider, "Отправляет / проверяет статус", "HTTPS")
+Rel(worker, db, "Читает receipts, пишет проекцию", "SQL")
+Rel(bulk, policy, "Проверяет согласия", "HTTPS")
+Rel(bulk, provider, "Отправляет по отдельной квоте", "HTTPS")
+Rel(provider, api, "Delivery reports", "HTTPS")
+Rel(provider, client, "Доставляет")
+Rel(worker, obs, "Метрики и traces", "OTLP")
+Rel(temporal, obs, "Метрики", "HTTP")
+@enduml

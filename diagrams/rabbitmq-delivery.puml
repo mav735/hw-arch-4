@@ -1,0 +1,28 @@
+@startuml
+title RabbitMQ - успешный push
+participant "Сервис банка" as Bank
+participant API
+database PostgreSQL as DB
+participant "Relay" as Relay
+queue RabbitMQ as Q
+participant Worker
+participant "Push-провайдер" as Push
+actor "Приложение" as App
+Bank -> API: событие + бизнес-ключ
+API -> DB: notification + outbox (одна транзакция)
+DB --> API: commit
+API --> Bank: принято, notification_id
+Relay -> DB: читать outbox
+Relay -> Q: publish persistent
+Q --> Relay: confirm
+Relay -> DB: отметить публикацию
+Q -> Worker: задание
+Worker -> DB: условный переход, сохранить attempt_id
+Worker -> Push: send(attempt_id), TTL 3 с
+Push --> Worker: принято
+Worker -> DB: сохранить ответ без регресса состояния
+Worker -> Q: ACK
+Push -> App: сообщение(notification_id)
+App -> API: delivery ACK
+API -> DB: уникальный receipt, DELIVERED
+@enduml

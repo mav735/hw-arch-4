@@ -1,0 +1,28 @@
+@startuml
+title Temporal - таймаут push и резерв SMS
+participant Temporal as T
+participant "Workflow worker" as W
+participant "Activity worker" as A
+participant "SMS-провайдер" as SMS
+participant API
+database "Реестр PostgreSQL" as DB
+participant "Signal relay" as Relay
+T -> W: durable timer: push без ACK за 3 с
+W -> T: schedule SMS activity
+T -> A: SMS activity(attempt_id)
+A -> DB: проверить receipts и состояние
+A -> SMS: send(attempt_id)
+SMS --> A: принято
+A -> T: result
+SMS -> API: подписанный delivered callback
+API -> DB: receipt + inbox, commit
+Relay -> T: signal delivered
+T -> W: receipt
+W -> T: отменить оставшиеся шаги
+W -> T: записать итог через activity и завершиться
+note over T,W
+После перезапуска worker история
+восстанавливает ожидания и решения.
+Внешняя отправка требует идемпотентности.
+end note
+@enduml

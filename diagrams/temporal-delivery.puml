@@ -1,0 +1,33 @@
+@startuml
+title Temporal - успешный push
+participant "Сервис банка" as Bank
+participant API
+database "Реестр PostgreSQL" as DB
+participant "Starter / signal relay" as Relay
+participant Temporal as T
+participant "Workflow worker" as W
+participant "Activity worker" as A
+participant "Push-провайдер" as Push
+actor "Приложение" as App
+Bank -> API: событие + бизнес-ключ
+API -> DB: notification + outbox, commit
+API --> Bank: принято
+Relay -> DB: прочитать outbox
+Relay -> T: start(notification_id)
+T -> W: workflow task
+W -> T: schedule send, durable timer
+T -> A: activity send push
+A -> Push: send(attempt_id), TTL 3 с
+Push --> A: принято
+A -> T: activity result
+Push -> App: сообщение
+App -> API: delivery ACK
+API -> DB: receipt + inbox, commit
+Relay -> T: signal delivered
+T -> W: обработать signal
+W -> T: отменить таймер, schedule projection
+T -> A: записать DELIVERED
+A -> DB: идемпотентно обновить проекцию
+A -> T: activity complete
+W -> T: завершить workflow
+@enduml
